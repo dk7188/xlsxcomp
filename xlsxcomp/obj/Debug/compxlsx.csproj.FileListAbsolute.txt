@@ -1,0 +1,16 @@
+C:\dev\compxlsx\compxlsx\bin\Debug\compxlsx.exe
+C:\dev\compxlsx\compxlsx\bin\Debug\compxlsx.pdb
+C:\dev\compxlsx\compxlsx\obj\Debug\compxlsx.csprojResolveAssemblyReference.cache
+C:\dev\compxlsx\compxlsx\obj\Debug\compxlsx.exe
+C:\dev\compxlsx\compxlsx\obj\Debug\compxlsx.pdb
+C:\dev\compxlsx\compxlsx\bin\Debug\EPPlus.dll
+C:\dev\compxlsx\compxlsx\bin\Debug\EPPlus.xml
+C:\dev\compxlsx\compxlsx\bin\Debug\compxlsx.exe.config
+C:\Users\liang\Desktop\compxlsx\bin\Debug\compxlsx.exe.config
+C:\Users\liang\Desktop\compxlsx\bin\Debug\compxlsx.exe
+C:\Users\liang\Desktop\compxlsx\bin\Debug\compxlsx.pdb
+C:\Users\liang\Desktop\compxlsx\bin\Debug\EPPlus.dll
+C:\Users\liang\Desktop\compxlsx\bin\Debug\EPPlus.xml
+C:\Users\liang\Desktop\compxlsx\obj\Debug\compxlsx.csprojResolveAssemblyReference.cache
+C:\Users\liang\Desktop\compxlsx\obj\Debug\compxlsx.exe
+C:\Users\liang\Desktop\compxlsx\obj\Debug\compxlsx.pdb

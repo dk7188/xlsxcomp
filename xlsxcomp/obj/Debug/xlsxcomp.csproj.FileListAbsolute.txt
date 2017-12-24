@@ -1,0 +1,8 @@
+C:\dev\xlsxcomp\xlsxcomp\bin\Debug\xlsxcomp.exe.config
+C:\dev\xlsxcomp\xlsxcomp\bin\Debug\xlsxcomp.exe
+C:\dev\xlsxcomp\xlsxcomp\bin\Debug\xlsxcomp.pdb
+C:\dev\xlsxcomp\xlsxcomp\bin\Debug\EPPlus.dll
+C:\dev\xlsxcomp\xlsxcomp\bin\Debug\EPPlus.xml
+C:\dev\xlsxcomp\xlsxcomp\obj\Debug\xlsxcomp.csprojResolveAssemblyReference.cache
+C:\dev\xlsxcomp\xlsxcomp\obj\Debug\xlsxcomp.exe
+C:\dev\xlsxcomp\xlsxcomp\obj\Debug\xlsxcomp.pdb

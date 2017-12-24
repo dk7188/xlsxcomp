@@ -1,0 +1,599 @@
+﻿/*
+ * Created by SharpDevelop.
+ * User: 53785
+ * Date: 2017/12/18
+ * Time: 下午 02:48
+ * 
+ * To change this template use Tools | Options | Coding | Edit Standard Headers.
+ */
+using System;
+using System.IO;
+using System.Data;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Diagnostics;
+using System.Linq;
+using OfficeOpenXml;
+
+namespace compxlsx
+{
+	/// <summary>
+	/// Description of CompareXlsxCore.
+	/// </summary>
+	public class ExcelComparator
+	{
+		private ExcelPackage _updatedExcelPackage;
+		private ExcelPackage _previousExcelPackage;
+		private FileStream _updatedFilestream;
+		private FileStream _previousFilestream;
+		private ExcelWorkbook _updatedWorkbook;
+		private ExcelWorkbook _previousWorkbook;
+		private List<worksheetInfo> _updatedWorkSheets;
+		private List<worksheetInfo> _previousWorkSheets;
+		//private DataTable _resultDataTable;	//the final result to be exported
+		//private List<string> _resultStatus;	//the comparison result(new/updated/deleted) of _resultDataTable
+		private string _updatedFileFullPath;
+		private string _previousFileFullPath;
+		private string _resultFileFullPath;
+		private const int _headerRow = 1;
+		
+		public ExcelWorkbook UpdatedWorkbook {
+			get { return _updatedWorkbook; }
+		}
+		public ExcelWorkbook PreviousWorkbook {
+			get { return _previousWorkbook; }
+		}
+		
+		public string UpdatedFileFullPath {
+			get{ return _updatedFileFullPath; }
+			set{ _updatedFileFullPath = value; }
+		}
+		
+		
+		public string PreviousFileFullPath {
+			get{ return _previousFileFullPath; }
+			set{ _previousFileFullPath = value; }
+		}
+		
+		
+		public string ResultFileFullPath {
+			get{ return _resultFileFullPath; }
+			set{ _resultFileFullPath = value; }
+		}
+		
+		private class worksheetDifference
+		{
+			public worksheetInfo UpdatedWorksheet;
+			public worksheetInfo PreviousWorksheet;
+			public enum DataStatus
+			{
+				New,
+				Unchange,
+				Update,
+				Delete
+			}
+			private DataTable _resultDataTable;
+			//List<int rowNumber, DataStatus> for rows
+			private Dictionary<int, DataStatus> _resultDataTableRowStatus;
+			//List<int columnNumber, DataStatus> for columns
+			private Dictionary<int, DataStatus> _resultDataTableColumnStatus;
+			
+			//Define the result table column's source
+			//<ResultTableColumnNumber,<ColumnNumber,SourceWorksheet>>
+			private Dictionary<int, WorksheetColumnStatus> _resultDataTableColumnRelation;
+			
+			public struct WorksheetColumnStatus {
+				public worksheetInfo Worksheet;
+				public int ColumnNumber;
+				public string UserDefinedColumnName;
+				public DataStatus Status;
+			}
+			
+			public worksheetDifference(
+				worksheetInfo UpdatedWorksheet,
+				worksheetInfo PreviousWorksheet)
+			{
+				this.UpdatedWorksheet = UpdatedWorksheet;
+				this.PreviousWorksheet = PreviousWorksheet;
+				initializeResultDataTableColumn();
+				findAndRenderDeleteRow();
+			}
+			
+			public DataTable ResultDataTable {
+				get { return _resultDataTable; }
+			}
+			
+			public Dictionary<int,DataStatus> ResultDataTableStatus {
+				get { return _resultDataTableRowStatus; }
+			}
+			
+			private void findAndRenderDeleteRow()
+			{
+				int prevRowIndx;
+				string prevKeyText;
+				for(prevRowIndx = 2; 
+				    prevRowIndx <= this.PreviousWorksheet.KeyColumnCellRowNumberDictionary.Count + 1; //plus one for the skipping of header column 
+				    prevRowIndx++) {
+					prevKeyText = this.PreviousWorksheet.KeyColumnCellRowNumberDictionary[prevRowIndx];
+					if(!this.UpdatedWorksheet.KeyColumnCellTextDictionary.ContainsKey(prevKeyText)) {
+						Console.WriteLine("Deleted rows : " + this.PreviousWorksheet.KeyColumnCellRowNumberDictionary[prevRowIndx]);
+					}
+				}
+			}
+			
+		
+			private void initializeResultDataTableColumn()
+			{
+				_resultDataTable = new DataTable();
+				int resultColIndx = 1;
+				const string columnNamePrefix = "__sys__c";
+				
+				//find deleted columns
+				int deletedColCount = 0;
+				int prevColIndx;
+				string prevKeyText;
+				List<int> deletedColIndxList = new List<int>();
+				for(prevColIndx = 1; 
+				    prevColIndx <= this.PreviousWorksheet.HeaderRowCellColumnNumberDictionary.Count; 
+				    prevColIndx++) {
+					prevKeyText = this.PreviousWorksheet.HeaderRowCellColumnNumberDictionary[prevColIndx];
+					if(!this.UpdatedWorksheet.HeaderRowCellTextDictionary.ContainsKey(prevKeyText)) {
+						Console.WriteLine("Deleted header column : " + this.PreviousWorksheet.HeaderRowCellColumnNumberDictionary[prevColIndx]);
+						//_resultDataTable.Columns.Add(columnNamePrefix + resultColIndx.ToString(), typeof(string));
+						deletedColCount++;
+						deletedColIndxList.Add(prevColIndx);
+					}
+				}
+				
+				//find added columns
+				int addedColCount = 0;
+				int updatedColIndx;
+				string updatedKeyText;
+				List<int> addedColIndxList = new List<int>();
+				for(updatedColIndx = 1; 
+				    updatedColIndx <= this.UpdatedWorksheet.HeaderRowCellColumnNumberDictionary.Count; 
+				    updatedColIndx++) {
+					updatedKeyText = this.UpdatedWorksheet.HeaderRowCellColumnNumberDictionary[updatedColIndx];
+					if(!this.PreviousWorksheet.HeaderRowCellTextDictionary.ContainsKey(updatedKeyText)) {
+						Console.WriteLine("Added header column : " + this.UpdatedWorksheet.HeaderRowCellColumnNumberDictionary[updatedColIndx]);
+						//_resultDataTable.Columns.Add(columnNamePrefix + resultColIndx.ToString(), typeof(string));
+						addedColCount++;
+						addedColIndxList.Add(updatedColIndx);
+					}
+				}
+
+				//make result table column structure
+				for (resultColIndx = 1; 
+				     resultColIndx <= this.UpdatedWorksheet.TrueEndColumn + deletedColCount; 
+				     resultColIndx++) {
+					_resultDataTable.Columns.Add(columnNamePrefix + resultColIndx.ToString(), typeof(string));
+				}
+
+				//make the column relationship table
+				resultColIndx = 1;
+				_resultDataTableColumnRelation = new Dictionary<int, WorksheetColumnStatus>();
+				WorksheetColumnStatus wksc;
+				//set the relationship of result table of deleted columns
+				wksc.Worksheet = this.PreviousWorksheet;
+				foreach(int deletedColIndxItem in deletedColIndxList) {
+					wksc.ColumnNumber = deletedColIndxItem;
+					wksc.UserDefinedColumnName = this.PreviousWorksheet.HeaderRowCellColumnNumberDictionary[deletedColIndxItem];
+					wksc.Status = DataStatus.Delete;
+					_resultDataTableColumnRelation.Add(resultColIndx, wksc);
+					resultColIndx++;
+				}
+				
+
+				//set the relationship of result table of remain columns
+				wksc.Worksheet = this.UpdatedWorksheet;
+				for(resultColIndx = resultColIndx;
+				    resultColIndx <= this.UpdatedWorksheet.TrueEndColumn + deletedColCount;
+				    resultColIndx++) {
+					wksc.ColumnNumber = resultColIndx - deletedColCount;
+					wksc.UserDefinedColumnName = this.UpdatedWorksheet.HeaderRowCellColumnNumberDictionary[resultColIndx - deletedColCount];
+					if (this.PreviousWorksheet.HeaderRowCellTextDictionary.ContainsKey(
+						this.UpdatedWorksheet.HeaderRowCellColumnNumberDictionary[resultColIndx - deletedColCount]))
+						wksc.Status = DataStatus.Unchange;
+					else
+						wksc.Status = DataStatus.New;
+					_resultDataTableColumnRelation.Add(resultColIndx, wksc);
+				}
+			}
+		}
+
+		private class worksheetInfo
+		{
+			
+			private ExcelWorksheet _worksheet;
+			private int _trueEndRow;
+			private int _trueEndColumn;
+			private int _systemEndRow;
+			private int _systemEndColumn;
+			private int _keyColumn;
+			//stores <CellText, RowNumber> for key column
+			private Dictionary<string,int> _keyColumnCellTextDictionary;
+			//stores <RowNumber, CellText> for key column
+			private Dictionary<int,string> _keyColumnCellRowNumberDictionary;
+			//stores <CellText, RowNumber> for header row
+			private Dictionary<string,int> _headerRowCellTextDictionary;
+			//stores <RowNumber, CellText> for header row
+			private Dictionary<int,string> _headerRowCellColumnNumberDictionary;
+			
+			public ExcelWorksheet Worksheet {
+				get { return _worksheet; }
+			}
+			
+			public int KeyColumn {
+				get { return _keyColumn; }
+			}
+			
+			public Dictionary<string,int> KeyColumnCellTextDictionary {
+				get {
+					return _keyColumnCellTextDictionary;
+				}
+			}
+		
+			public Dictionary<int,string> KeyColumnCellRowNumberDictionary {
+				get {
+					return _keyColumnCellRowNumberDictionary;
+				}
+			}
+			
+			public Dictionary<string,int> HeaderRowCellTextDictionary {
+				get {
+					return _headerRowCellTextDictionary;
+				}
+			}
+		
+			public Dictionary<int,string> HeaderRowCellColumnNumberDictionary {
+				get {
+					return _headerRowCellColumnNumberDictionary;
+				}
+			}			
+			public int TrueEndRow {
+				get {
+					return _trueEndRow;
+				}
+			}
+			public int TrueEndColumn {
+				get {
+					return _trueEndColumn;
+				}
+			}
+			public int SystemEndRow {
+				get {
+					return _systemEndRow;
+				}
+			}
+			public int SystemEndColumn {
+				get {
+					return _systemEndColumn;
+				}
+			}
+			
+			public worksheetInfo(ExcelWorksheet Worksheet)
+			{
+				_worksheet = Worksheet;
+				_trueEndRow = 0;
+				_trueEndColumn = 0;
+				if (Worksheet.Dimension == null) {
+					_systemEndRow = 0;
+					_systemEndColumn = 0;
+				} else {
+					_systemEndRow = Worksheet.Dimension.End.Row;
+					_systemEndColumn = Worksheet.Dimension.End.Column;
+				}
+
+				findTrueEndRowAndColumn();
+				findKeyColumn();
+				initializeHeaderRow();
+			}
+			
+			private void initializeHeaderRow() {
+				int colIndx;
+				
+				//prepare header row
+				_headerRowCellTextDictionary = new Dictionary<string,int>();
+				_headerRowCellColumnNumberDictionary = new Dictionary<int, string>();
+				for (colIndx = 1; colIndx <= this.TrueEndColumn; colIndx++) {
+					Console.WriteLine(this.Worksheet.Cells[_headerRow, colIndx].Text);
+					_headerRowCellTextDictionary.Add(
+						this.Worksheet.Cells[_headerRow, colIndx].Text,
+						colIndx
+					);
+					_headerRowCellColumnNumberDictionary.Add(
+						colIndx,
+						this.Worksheet.Cells[_headerRow, colIndx].Text
+					);
+				}
+			}
+			
+			
+			private void findKeyColumn()
+			{
+				int rowIndx;
+				int colIndx;
+				List<int> keyColumnCandidate = new List<int>();
+				HashSet<string> keySet;
+				bool duplicated;
+				string cellText;
+				
+				//make the key column candidates
+				for (colIndx = 1; colIndx <= this.SystemEndColumn; colIndx++) {
+					duplicated = false;
+					keySet = new HashSet<string>();
+					for (rowIndx = 1; rowIndx <= this.SystemEndRow; rowIndx++) {
+						cellText = this.Worksheet.Cells[rowIndx, colIndx].Text;
+						if (cellText.Trim() == "")
+							continue;
+						keySet.Add(cellText);
+						if (keySet.Count != rowIndx) {
+							duplicated = true;
+							break;
+						}
+					}
+					if (duplicated)
+						keyColumnCandidate.Add(0);
+					else
+						keyColumnCandidate.Add(keySet.Count);
+				}
+				
+				//Here find the key column result by their weight
+				int keyColumnMax = -1;
+				int keyIndx;
+				for (keyIndx = 0; keyIndx < keyColumnCandidate.Count; keyIndx++) {
+					if (keyColumnMax < keyColumnCandidate[keyIndx])
+					if (keyColumnCandidate[keyIndx] > 1)
+						keyColumnMax = keyIndx;
+				}
+				this._keyColumn = keyColumnMax + 1;
+				
+				//prepare key column
+				_keyColumnCellTextDictionary = new Dictionary<string,int>();
+				_keyColumnCellRowNumberDictionary = new Dictionary<int, string>();
+				for (rowIndx = 2; rowIndx <= this.TrueEndRow; rowIndx++) {
+					_keyColumnCellTextDictionary.Add(
+						this.Worksheet.Cells[rowIndx, this.KeyColumn].Text,
+						rowIndx
+					);
+					_keyColumnCellRowNumberDictionary.Add(
+						rowIndx,
+						this.Worksheet.Cells[rowIndx, this.KeyColumn].Text
+					);
+				}
+			}
+			
+			private void findTrueEndRowAndColumn()
+			{
+				int colIndx;
+				int rowIndx;
+				int colMax = 0;
+				int rowMax = 0;
+				
+				//find true end column
+				for (rowIndx = 1; rowIndx <= this.SystemEndRow; rowIndx++) {
+					for (colIndx = colMax + 1; colIndx <= this.SystemEndColumn; colIndx++) {
+						if (this.Worksheet.Cells[rowIndx, colIndx].Text.Length > 0)
+							colMax = colIndx;
+						if (colMax >= this.SystemEndColumn)
+							break;
+					}
+					if (colMax >= this.SystemEndColumn)
+						break;					
+				}
+				_trueEndColumn = colMax;
+				
+				//find true end row
+				for (colIndx = 1; colIndx <= this.SystemEndColumn; colIndx++) {
+					for (rowIndx = rowMax + 1; rowIndx <= this.SystemEndRow; rowIndx++) {
+						if (this.Worksheet.Cells[rowIndx, colIndx].Text.Length > 0)
+							rowMax = rowIndx;
+						if (rowMax >= this.SystemEndRow)
+							break;
+					}
+					if (rowMax >= this.SystemEndRow)
+						break;					
+				}	
+				_trueEndRow = rowMax;
+			}
+		
+			private void findTrueEndRowAndColumn_Parallel()
+			{
+				
+				
+				int colMax = 0;
+				int rowMax = 0;
+				
+				Parallel.For(1, this.SystemEndRow, (int rowIndxParallel, ParallelLoopState loopState) => {
+					int colIndx;
+					for (colIndx = colMax + 1; colIndx <= this.SystemEndColumn; colIndx++) {
+						if (colMax >= this.SystemEndColumn)
+							loopState.Stop();
+						if (this.Worksheet.Cells[rowIndxParallel, colIndx].Text.Length > 0)
+							colMax = colIndx;
+					}
+				});
+				_trueEndColumn = colMax;
+			
+				//find true end row
+				Parallel.For(1, this.SystemEndColumn, (int colIndxParallel, ParallelLoopState loopState) => {
+					int rowIndx;
+					for (rowIndx = rowMax + 1; rowIndx <= this.SystemEndRow; rowIndx++) {
+						if (rowMax >= this.SystemEndRow)
+							loopState.Stop();
+						if (this.Worksheet.Cells[rowIndx, colIndxParallel].Text.Length > 0)
+							rowMax = rowIndx;
+					}
+				});	
+				_trueEndRow = rowMax;
+			}
+		}
+		
+		
+		
+		//		private Dictionary<string,int> getDeletedRowsOfPreviousWorksheet(worksheetInfo UpdatedWorksheet, worksheetInfo PreviousWorksheet)
+		//		{
+		//			Dictionary<string,int> result = new Dictionary<string,int>();
+		//			foreach(KeyValuePair<string,int> updatedKey in PreviousWorksheet.KeyColumnDictionary)
+		//			{
+		//				if (UpdatedWorksheet.KeyColumnDictionary.ContainsKey(updatedKey.Key))
+		//				{
+		//
+		//				}
+		//			}
+		//
+		//
+		//			int prevKeyColDictCount = PreviousWorksheet.KeyColumnDictionary.Count;
+		//			int prevKeyColDictIndx;
+		//			for(prevKeyColDictIndx = 0; prevKeyColDictIndx < prevKeyColDictCount; prevKeyColDictIndx++){
+		//				if(
+		//					UpdatedWorksheet.KeyColumnDictionary.ContainsKey(
+		//						//PreviousWorksheet.KeyColumnDictionary.Keys.
+		//					)
+		//				)
+		//				{
+		//
+		//				}
+		//			}
+		//		}
+		
+
+		
+		public ExcelComparator()
+		{
+		}
+		
+	
+		
+
+		
+		private bool verifyTwinWorksheet(
+			ExcelWorksheet UpdatedExcelWorksheetObject,
+			ExcelWorksheet PreviousExcelWorksheetObject)
+		{
+			return false;
+		}
+		
+		private DataTable getDataTableFromWorksheet(
+			ExcelWorksheet ExcelWorksheetObject)
+		{
+			//Parallel-For import has to implement
+//			int startrow = _excelDataTable.Address.Start.Row;
+//			int startcol = _excelDataTable.Address.Start.Column;
+//			int endrow = _excelDataTable.Address.End.Row;
+//			int endcol = _excelDataTable.Address.End.Column;
+//			int x, y;
+//			string tmpString;
+//			DataRow drow;
+//
+//			for (x = startcol; x <= endcol; x++) {
+//				tmpString = _excelDataTable.WorkSheet.Cells[startrow, x].Text;
+//
+//				_dataTable.Columns.Add(tmpString.Trim(), typeof(string));
+//			}
+//
+//			for (y = startrow + 1; y <= endrow; y++) { //start row plus one to skip the header
+//				drow = _dataTable.NewRow();
+//				for (x = startcol; x <= endcol; x++) {
+//					tmpString = _excelDataTable.WorkSheet.Cells[y, x].Text;
+//					drow[x - startcol] = tmpString.Trim();
+//				}
+//				_dataTable.Rows.Add(drow);
+//			}			
+			return new DataTable();
+		}
+		
+		private void executeComparison(
+			DataTable UpdatedTable, 
+			DataTable PreviousTable)
+		{
+			//Parallel-For compare has to implement
+			//Populate the object variable for final result
+			//No return value
+		}
+		
+		private void populateDeletedRowsToResult(
+			Dictionary<string,int> PreviousDataViewIndex, 
+			DataView PreviousDataView)
+		{
+			//the result datatable must be initialized before populate the deleted rows
+		}
+		
+		private void populateNewDataTableToResult(
+			Dictionary<string,int> UpdatedDataViewIndex,
+			DataTable UpdatedTable,
+			DataView PreviousDataView)
+		{
+			
+		}
+		
+		public void test()
+		{
+//			worksheetDifference wksd = 
+//				new worksheetDifference(_updatedWorkSheets[0]., _previousWorkSheets[0]);
+			worksheetDifference wksd = new worksheetDifference(_updatedWorkSheets[0], _previousWorkSheets[0]);			
+		}
+		
+		public void LoadWorkbook(string UpdatedFileFullPath,
+			string PreviousFileFullPath)
+		{
+			this.UpdatedFileFullPath = UpdatedFileFullPath;
+			this.PreviousFileFullPath = PreviousFileFullPath;
+			LoadWorkbook();
+		}
+		
+		public void LoadWorkbook()
+		{
+			Console.WriteLine("Start loading filestream: {0}", 
+				DateTime.Now.ToString("hh:mm:ss.fff")); 
+			_updatedFilestream = new FileStream(this.UpdatedFileFullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+			_updatedExcelPackage = new ExcelPackage(_updatedFilestream);
+			_previousFilestream = new FileStream(this.PreviousFileFullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+			_previousExcelPackage = new ExcelPackage(_previousFilestream);
+			Console.WriteLine("Start initilize excel package: {0}", 
+				DateTime.Now.ToString("hh:mm:ss.fff")); 
+			_updatedWorkSheets = new List<worksheetInfo>();
+			_previousWorkSheets = new List<worksheetInfo>();
+			
+			foreach (ExcelWorksheet wks in _updatedExcelPackage.Workbook.Worksheets) {
+				Console.WriteLine("Initilize worksheetInfo: {0}", 
+					DateTime.Now.ToString("hh:mm:ss.fff")); 
+				worksheetInfo wksInfo = new worksheetInfo(wks);
+				Console.WriteLine("Copy worksheetInfo to worksheets collection: {0}", 
+					DateTime.Now.ToString("hh:mm:ss.fff")); 				
+				_updatedWorkSheets.Add(wksInfo);
+				Console.WriteLine(wks.Name);
+				Console.WriteLine("System End Row:" + wksInfo.SystemEndRow);
+				Console.WriteLine("System End Column:" + wksInfo.SystemEndColumn);
+				Console.WriteLine("True End Row:" + wksInfo.TrueEndRow);
+				Console.WriteLine("True End Column:" + wksInfo.TrueEndColumn);
+				Console.WriteLine("Date and Time with Milliseconds: {0}", 
+					DateTime.Now.ToString("hh:mm:ss.fff")); 
+			}
+			foreach (ExcelWorksheet wks in _previousExcelPackage.Workbook.Worksheets) {
+				Console.WriteLine("Initilize worksheetInfo: {0}", 
+					DateTime.Now.ToString("hh:mm:ss.fff")); 
+				worksheetInfo wksInfo = new worksheetInfo(wks);
+				Console.WriteLine("Copy worksheetInfo to worksheets collection: {0}", 
+					DateTime.Now.ToString("hh:mm:ss.fff")); 				
+				_previousWorkSheets.Add(wksInfo);
+				Console.WriteLine(wks.Name);
+				Console.WriteLine("System End Row:" + wksInfo.SystemEndRow);
+				Console.WriteLine("System End Column:" + wksInfo.SystemEndColumn);
+				Console.WriteLine("True End Row:" + wksInfo.TrueEndRow);
+				Console.WriteLine("True End Column:" + wksInfo.TrueEndColumn);
+				Console.WriteLine("Date and Time with Milliseconds: {0}", 
+					DateTime.Now.ToString("hh:mm:ss.fff")); 
+			}			
+		}
+		
+		public void ReleaseResource()
+		{
+			if (_updatedFilestream != null)
+				_updatedFilestream.Close();
+			if (_previousFilestream != null)
+				_previousFilestream.Close();
+		}
+	}
+}
