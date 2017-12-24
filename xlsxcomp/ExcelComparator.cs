@@ -76,10 +76,6 @@ namespace xlsxcomp
 				Delete
 			}
 			private DataTable _resultDataTable;
-			//List<int rowNumber, DataStatus> for rows
-			//private Dictionary<int, DataStatus> _resultDataTableRowStatus;
-			//List<int columnNumber, DataStatus> for columns
-			//private Dictionary<int, DataStatus> _resultDataTableColumnStatus;
 			
 			//Define the result table column's source
 			//<ResultTableColumnNumber, Column status>
@@ -92,8 +88,6 @@ namespace xlsxcomp
 			{
 				public int RowNumber;
 				public int ColumnNumber;
-				//				public string UserDefinedColumnName;
-				//				public string KeyRowText;
 				public DataStatus Status;
 				public string UpdatedText;
 				public string PreviousText;
@@ -101,10 +95,7 @@ namespace xlsxcomp
 			
 			public struct WorksheetColumnStatus
 			{
-				//public worksheetInfo Worksheet;
 				public int ColumnNumber;
-				//public int PreviousWorksheetColumnNumber;
-				//public int UpdatedWorksheetColumnNumber;
 				public string UserDefinedColumnName;
 				public DataStatus Status;
 			}
@@ -118,6 +109,25 @@ namespace xlsxcomp
 				worksheetInfo UpdatedWorksheet,
 				worksheetInfo PreviousWorksheet)
 			{
+				//if there is no any key column in worksheet
+				//comparison cannot be proceed
+				//throw exception
+				if (UpdatedWorksheet.KeyColumn == 0) {
+					string msg = 
+						"Updated workbook " +
+						"[" + UpdatedWorksheet.Worksheet.Name + "] " +
+						" key column is not available";
+					InvalidKeyColumn ex = new InvalidKeyColumn(msg);
+					throw ex;
+				}
+				if (PreviousWorksheet.KeyColumn == 0) {
+					string msg = 
+						"Previous workbook " +
+						"[" + PreviousWorksheet.Worksheet.Name + "] " +
+						" key column is not available";
+					InvalidKeyColumn ex = new InvalidKeyColumn(msg);
+					throw ex;
+				}				
 				this.UpdatedWorksheet = UpdatedWorksheet;
 				this.PreviousWorksheet = PreviousWorksheet;
 				_resultDataTableCellStatus = new List<CellStatus>();
@@ -129,10 +139,6 @@ namespace xlsxcomp
 			public DataTable ResultDataTable {
 				get { return _resultDataTable; }
 			}
-			
-			//			public Dictionary<int,DataStatus> ResultDataTableRowStatus {
-			//				get { return _resultDataTableRowStatus; }
-			//			}
 			
 			private int addNewRowToResultDataTable(Queue<string> RawText)
 			{
@@ -597,19 +603,30 @@ namespace xlsxcomp
 					}
 				}
 				this._keyColumn = keyColumnMaxIndx + 1;
+//				if (this._keyColumn < 1) {
+//					string msg = 
+//						"Worksheet : " + this.Worksheet.Name + " " +
+//						" key column is not available";
+//					InvalidKeyColumn ex = new InvalidKeyColumn(msg);
+//					
+//					throw ex;
+//				}
 				
 				//prepare key column
-				_keyColumnCellTextDictionary = new Dictionary<string,int>();
-				_keyColumnCellRowNumberDictionary = new Dictionary<int, string>();
-				for (rowIndx = 2; rowIndx <= this.TrueEndRow; rowIndx++) {
-					_keyColumnCellTextDictionary.Add(
-						this.Worksheet.Cells[rowIndx, this.KeyColumn].Text,
-						rowIndx
-					);
-					_keyColumnCellRowNumberDictionary.Add(
-						rowIndx,
-						this.Worksheet.Cells[rowIndx, this.KeyColumn].Text
-					);
+					_keyColumnCellTextDictionary = new Dictionary<string,int>();
+					_keyColumnCellRowNumberDictionary = new Dictionary<int, string>();
+
+				if (this.KeyColumn > 0) {
+					for (rowIndx = 2; rowIndx <= this.TrueEndRow; rowIndx++) {
+						_keyColumnCellTextDictionary.Add(
+							this.Worksheet.Cells[rowIndx, this.KeyColumn].Text,
+							rowIndx
+						);
+						_keyColumnCellRowNumberDictionary.Add(
+							rowIndx,
+							this.Worksheet.Cells[rowIndx, this.KeyColumn].Text
+						);
+					}
 				}
 			}
 			
@@ -796,7 +813,7 @@ namespace xlsxcomp
 				// do work here   
 				ExcelWorksheet sht; //= xlPackage.Workbook.Worksheets["output"];
 //				if (sht == null)
-					sht = xlPackage.Workbook.Worksheets.Add("output");
+				sht = xlPackage.Workbook.Worksheets.Add("output");
 				foreach (worksheetDifference.CellStatus cellstatus in wksd.ResultDataTableCellStatus) {
 					sht.Cells[cellstatus.RowNumber, cellstatus.ColumnNumber].Value = cellstatus.UpdatedText;
 					//ExcelComment cmt = sht.Cells[cellstatus.RowNumber, cellstatus.ColumnNumber].Comment;
@@ -899,6 +916,30 @@ namespace xlsxcomp
 				_updatedFilestream.Close();
 			if (_previousFilestream != null)
 				_previousFilestream.Close();
+		}
+	}
+	
+	[Serializable()]
+	public class InvalidKeyColumn : System.Exception
+	{
+		public InvalidKeyColumn()
+			: base()
+		{
+		}
+		public InvalidKeyColumn(string message)
+			: base(message)
+		{
+		}
+		public InvalidKeyColumn(string message, System.Exception inner)
+			: base(message, inner)
+		{
+		}
+	
+		// A constructor is needed for serialization when an
+		// exception propagates from a remoting server to the client.
+		protected InvalidKeyColumn(System.Runtime.Serialization.SerializationInfo info,
+			System.Runtime.Serialization.StreamingContext context)
+		{
 		}
 	}
 }
