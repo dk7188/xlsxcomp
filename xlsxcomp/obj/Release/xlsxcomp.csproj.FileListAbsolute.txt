@@ -1,0 +1,6 @@
+C:\dev\xlsxcomp\xlsxcomp\bin\Release\xlsxcomp.exe.config
+C:\dev\xlsxcomp\xlsxcomp\bin\Release\xlsxcomp.exe
+C:\dev\xlsxcomp\xlsxcomp\bin\Release\EPPlus.dll
+C:\dev\xlsxcomp\xlsxcomp\bin\Release\EPPlus.xml
+C:\dev\xlsxcomp\xlsxcomp\obj\Release\xlsxcomp.csprojResolveAssemblyReference.cache
+C:\dev\xlsxcomp\xlsxcomp\obj\Release\xlsxcomp.exe

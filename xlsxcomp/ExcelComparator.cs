@@ -73,7 +73,8 @@ namespace xlsxcomp
 				New,
 				Unchange,
 				Update,
-				Delete
+				Delete,
+				Unknown
 			}
 			private DataTable _resultDataTable;
 			
@@ -412,12 +413,19 @@ namespace xlsxcomp
 					wkscForRegular.ColumnNumber = resultColIndx - this._deletedColumnCount;
 					//wkscForRegular.UpdatedWorksheetColumnNumber = resultColIndx - this._deletedColumnCount;
 					//wkscForRegular.PreviousWorksheetColumnNumber = resultColIndx;
-					wkscForRegular.UserDefinedColumnName = this.UpdatedWorksheet.HeaderRowCellColumnNumberDictionary[resultColIndx - this._deletedColumnCount];
-					if (this.PreviousWorksheet.HeaderRowCellTextDictionary.ContainsKey(
-						    this.UpdatedWorksheet.HeaderRowCellColumnNumberDictionary[resultColIndx - this._deletedColumnCount]))
-						wkscForRegular.Status = DataStatus.Unchange;
-					else
-						wkscForRegular.Status = DataStatus.New;
+					if (this.UpdatedWorksheet.HeaderRowCellColumnNumberDictionary.ContainsKey(
+						    resultColIndx - this._deletedColumnCount)) {
+						wkscForRegular.UserDefinedColumnName = this.UpdatedWorksheet.HeaderRowCellColumnNumberDictionary[resultColIndx - this._deletedColumnCount];
+						if (this.PreviousWorksheet.HeaderRowCellTextDictionary.ContainsKey(
+							    this.UpdatedWorksheet.HeaderRowCellColumnNumberDictionary[resultColIndx - this._deletedColumnCount]))
+							wkscForRegular.Status = DataStatus.Unchange;
+						else
+							wkscForRegular.Status = DataStatus.New;
+												
+					} else {
+						wkscForRegular.UserDefinedColumnName = "";
+						wkscForRegular.Status = DataStatus.Unknown;
+					}
 					_resultDataTableColumnRelation.Add(resultColIndx, wkscForRegular);
 				}
 				
@@ -549,15 +557,18 @@ namespace xlsxcomp
 				_headerRowCellTextDictionary = new Dictionary<string,int>();
 				_headerRowCellColumnNumberDictionary = new Dictionary<int, string>();
 				for (colIndx = 1; colIndx <= this.TrueEndColumn; colIndx++) {
-					Console.WriteLine(this.Worksheet.Cells[_headerRowNumber, colIndx].Text);
-					_headerRowCellTextDictionary.Add(
-						this.Worksheet.Cells[_headerRowNumber, colIndx].Text,
-						colIndx
-					);
-					_headerRowCellColumnNumberDictionary.Add(
-						colIndx,
-						this.Worksheet.Cells[_headerRowNumber, colIndx].Text
-					);
+					string celltext = this.Worksheet.Cells[_headerRowNumber, colIndx].Text;
+					Console.WriteLine("Header text : " + celltext);
+					if (!_headerRowCellTextDictionary.ContainsKey(celltext)) {
+						_headerRowCellTextDictionary.Add(
+							this.Worksheet.Cells[_headerRowNumber, colIndx].Text,
+							colIndx
+						);
+						_headerRowCellColumnNumberDictionary.Add(
+							colIndx,
+							this.Worksheet.Cells[_headerRowNumber, colIndx].Text
+						);
+					}
 				}
 			}
 			
@@ -613,8 +624,8 @@ namespace xlsxcomp
 //				}
 				
 				//prepare key column
-					_keyColumnCellTextDictionary = new Dictionary<string,int>();
-					_keyColumnCellRowNumberDictionary = new Dictionary<int, string>();
+				_keyColumnCellTextDictionary = new Dictionary<string,int>();
+				_keyColumnCellRowNumberDictionary = new Dictionary<int, string>();
 
 				if (this.KeyColumn > 0) {
 					for (rowIndx = 2; rowIndx <= this.TrueEndRow; rowIndx++) {
@@ -802,18 +813,22 @@ namespace xlsxcomp
 			
 		}
 		
-		public void test()
+		public void OutputResultFile(string FileNameFullPath)
 		{
 //			worksheetDifference wksd = 
 //				new worksheetDifference(_updatedWorkSheets[0]., _previousWorkSheets[0]);
 			worksheetDifference wksd = new worksheetDifference(_updatedWorkSheets[0], _previousWorkSheets[0]);
 			
-			var newFile = new FileInfo("export.xlsx");
+			string filename = FileNameFullPath;
+			if (File.Exists(filename)) {
+				File.Delete(filename);
+			}
+			var newFile = new FileInfo(filename);
 			using (ExcelPackage xlPackage = new ExcelPackage(newFile)) {                       
 				// do work here   
 				ExcelWorksheet sht; //= xlPackage.Workbook.Worksheets["output"];
 //				if (sht == null)
-				sht = xlPackage.Workbook.Worksheets.Add("output");
+				sht = xlPackage.Workbook.Worksheets.Add("comparison result");
 				foreach (worksheetDifference.CellStatus cellstatus in wksd.ResultDataTableCellStatus) {
 					sht.Cells[cellstatus.RowNumber, cellstatus.ColumnNumber].Value = cellstatus.UpdatedText;
 					//ExcelComment cmt = sht.Cells[cellstatus.RowNumber, cellstatus.ColumnNumber].Comment;
@@ -849,6 +864,9 @@ namespace xlsxcomp
 					}
 					
 				}
+				xlPackage.Workbook.Properties.Author = "梁瑞元(Liang)";
+				xlPackage.Workbook.Properties.Title = "xlsxcomp";
+				xlPackage.Workbook.Properties.Subject = "Excel comparison";
 				xlPackage.Save();
 			}
 

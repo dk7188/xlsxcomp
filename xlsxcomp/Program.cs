@@ -17,18 +17,22 @@ namespace xlsxcomp
 	{
 		public static void Main(string[] args)
 		{
-			Console.WriteLine("=== Program Start ===");
+			Console.WriteLine("=== Excel Comparison Program");
+			Console.WriteLine("=== Author : 梁瑞元(Liang)");
+			Console.WriteLine("=== Date : 2017/12/25");
+			Console.WriteLine("=== Program Start");
 			Stopwatch stopWatch = new Stopwatch();
 			stopWatch.Start();
 			
 			
-			string updatedFilename = "demo-new.xlsx";
-			string previousFilename = "demo-old.xlsx";
+			string updatedFilename = @"\\192.168.54.2\Data\Instrument\Utility_Team_Folder\Personal\Liang\Programs\InstrumentListCompare\new.xlsx";
+			string previousFilename = @"\\192.168.54.2\Data\Instrument\Utility_Team_Folder\Personal\Liang\Programs\InstrumentListCompare\old.xlsx";
+			string outputFilename = @"\\192.168.54.2\Data\Instrument\Utility_Team_Folder\Personal\Liang\Programs\InstrumentListCompare\result.xlsx";
 			ExcelComparator xlcp = new ExcelComparator();
 			xlcp.UpdatedFileFullPath = updatedFilename;
 			xlcp.PreviousFileFullPath = previousFilename;
 			xlcp.LoadWorkbook();
-			xlcp.test();
+			xlcp.OutputResultFile(outputFilename);
 			xlcp.ReleaseResource();
 
 			// TODO: Implement Functionality Here
@@ -41,9 +45,9 @@ namespace xlsxcomp
 			string elapsedTime = String.Format("{0:00}:{1:00}",
 				                     ts.Seconds,
 				                     ts.Milliseconds / 10);
-			Console.WriteLine("*** Overall RunTime : " + elapsedTime);
+			Console.WriteLine("=== Overall Execution Time : " + elapsedTime);
 			
-			Console.WriteLine("=== Program End ===");
+			Console.WriteLine("=== Program End");
 			Console.ReadKey(true);
 		}
 	}
